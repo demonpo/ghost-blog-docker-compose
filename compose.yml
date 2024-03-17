@@ -1,0 +1,64 @@
+version: '3.7'
+
+services:
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./volumes/certs:/etc/nginx/certs
+      - ./volumes/vhost:/etc/nginx/vhost.d
+      - ./volumes/html:/usr/share/nginx/html
+    labels:
+      com.github.nginx-proxy.nginx: "true"
+
+  letsencrypt-companion:
+    image: nginxproxy/acme-companion
+    container_name: acme-companion
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./volumes/certs:/etc/nginx/certs
+      - ./volumes/vhost:/etc/nginx/vhost.d
+      - ./volumes/html:/usr/share/nginx/html
+      - ./volumes/acme:/etc/acme.sh
+
+    environment:
+      DEFAULT_EMAIL: ${EMAIL}
+      NGINX_PROXY_CONTAINER: nginx-proxy
+
+  ghost:
+    image: ghost:5-alpine
+    restart: always
+    expose:
+      - "2368"
+    ports:
+      - "8080:2368"
+    environment:
+      # see https://ghost.org/docs/config/#configuration-options
+      database__client: mysql
+      database__connection__host: ghost-db
+      database__connection__user: root
+      database__connection__password: ${DATABASE_PASSWORD}
+      database__connection__database: ghost
+      # this url value is just an example, and is likely wrong for your environment!
+      url: ${GHOST_URL}
+      # contrary to the default mentioned in the linked documentation, this image defaults to NODE_ENV=production (so development mode needs to be explicitly specified if desired)
+      #NODE_ENV: development
+      VIRTUAL_HOST: ${DOMAIN}
+      VIRTUAL_PORT: 2368
+      LETSENCRYPT_HOST: ${DOMAIN}
+      LETSENCRYPT_EMAIL: ${EMAIL}
+    volumes:
+      - ./volumes/ghost:/var/lib/ghost/content
+
+  ghost-db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DATABASE_PASSWORD}
+    volumes:
+      - ./volumes/databases/ghost-db:/var/lib/mysql
